@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import async_playwright
 
 
 # =========================
