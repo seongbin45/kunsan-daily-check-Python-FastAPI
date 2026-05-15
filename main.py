@@ -254,13 +254,21 @@ async def run_daily_check(user_id: str, user_pw: str) -> Dict[str, Any]:
             "detail": {"user_id": user_id},
         }
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            java_script_enabled=True,
-            user_agent=USER_AGENT,
-            viewport={"width": 1280, "height": 900},
-        )
+async with async_playwright() as p:
+    browser = await p.chromium.launch(
+        headless=True,
+        args=[
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu"
+        ]
+    )
+
+    context = await browser.new_context(
+        java_script_enabled=True,
+        user_agent=USER_AGENT,
+        viewport={"width": 1280, "height": 900},
+    )
         page = await context.new_page()
 
         try:
