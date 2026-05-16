@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional, Dict, Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from playwright.async_api import async_playwright
 
@@ -28,16 +28,15 @@ USER_AGENT = (
 DEFAULT_TIMEOUT_MS = 15000
 DONE_FILE_PREFIX = "check_done_today_"
 
-# 동시 실행 방지
 run_lock = asyncio.Lock()
 
 
 # =========================
-# 요청/응답 모델
+# 요청 / 응답 모델
 # =========================
 class CheckRequest(BaseModel):
-    user_id: str = Field(..., min_length=1, description="학번")
-    user_pw: str = Field(..., min_length=1, description="비밀번호")
+    user_id: str = Field(..., min_length=1)
+    user_pw: str = Field(..., min_length=1)
 
 
 class CheckResponse(BaseModel):
@@ -69,18 +68,23 @@ def is_already_done_today(user_id: str) -> bool:
         with open(path, "r", encoding="utf-8") as f:
             last_date = f.read().strip()
 
-        return last_date == datetime.now().strftime("%Y-%m-%d")
+        return (
+            last_date ==
+            datetime.now().strftime("%Y-%m-%d")
+        )
 
     except Exception:
         return False
 
 
-def mark_as_done_today(user_id: str) -> None:
+def mark_as_done_today(user_id: str):
 
     path = done_file_path(user_id)
 
     with open(path, "w", encoding="utf-8") as f:
-        f.write(datetime.now().strftime("%Y-%m-%d"))
+        f.write(
+            datetime.now().strftime("%Y-%m-%d")
+        )
 
 
 # =========================
@@ -94,7 +98,10 @@ async def try_click_by_text(
 ) -> bool:
 
     try:
-        locator = page.get_by_text(text, exact=exact).first
+        locator = page.get_by_text(
+            text,
+            exact=exact
+        ).first
 
         await locator.wait_for(
             state="visible",
@@ -140,9 +147,15 @@ async def wait_for_any_popup_confirm(
     timeout_sec: int = 3
 ) -> bool:
 
-    end = asyncio.get_event_loop().time() + timeout_sec
+    end = (
+        asyncio.get_event_loop().time()
+        + timeout_sec
+    )
 
-    while asyncio.get_event_loop().time() < end:
+    while (
+        asyncio.get_event_loop().time()
+        < end
+    ):
 
         try:
             if await try_click_by_text(
@@ -169,7 +182,7 @@ async def wait_for_any_popup_confirm(
 
 
 # =========================
-# 버튼 찾기
+# 저장 버튼 찾기
 # =========================
 async def find_and_click_save(page) -> bool:
 
@@ -214,6 +227,9 @@ async def find_and_click_save(page) -> bool:
     return False
 
 
+# =========================
+# 예 버튼 찾기
+# =========================
 async def find_and_click_yes(page) -> bool:
 
     candidates = [
@@ -316,12 +332,12 @@ async def login(
         await asyncio.sleep(0.5)
 
     raise RuntimeError(
-        "로그인에 실패했거나 로그인 페이지를 벗어나지 못했습니다."
+        "로그인 실패"
     )
 
 
 # =========================
-# 메뉴 이동
+# 통합정보 이동
 # =========================
 async def open_main_portal(page):
 
@@ -352,10 +368,35 @@ async def open_main_portal(page):
 
     await asyncio.sleep(5)
 
+    print(
+        "통합정보 클릭 후 URL:",
+        page.url
+    )
+
     return page
 
 
+# =========================
+# 메뉴 이동
+# =========================
 async def navigate_to_daily_check(page):
+
+    print("현재 URL:", page.url)
+
+    print("frame 개수:", len(page.frames))
+
+    for idx, frame in enumerate(page.frames):
+
+        print(
+            f"FRAME[{idx}] URL:",
+            frame.url
+        )
+
+    html = await page.content()
+
+    print("HTML 길이:", len(html))
+
+    print(html[:3000])
 
     steps = [
         "학생서비스",
@@ -364,9 +405,7 @@ async def navigate_to_daily_check(page):
     ]
 
     for step in steps:
-    
-        print("현재 URL:", page.url)
-        print(await page.content())
+
         print(f"메뉴 이동 시도: {step}")
 
         clicked = await try_click_by_text(
@@ -384,13 +423,18 @@ async def navigate_to_daily_check(page):
                 exact=True
             )
 
+        print(
+            f"{step} 클릭 결과:",
+            clicked
+        )
+
         if not clicked:
 
             raise RuntimeError(
                 f"'{step}' 메뉴를 찾지 못했습니다."
             )
 
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(2)
 
 
 # =========================
@@ -437,7 +481,7 @@ async def run_daily_check(
         return {
             "ok": True,
             "status": "skipped",
-            "message": "오늘은 이미 완료된 계정이야.",
+            "message": "오늘 이미 완료됨",
             "detail": {
                 "user_id": user_id
             },
@@ -466,29 +510,45 @@ async def run_daily_check(
         page = await context.new_page()
 
         try:
-            # 1 로그인
+
+            # 로그인
             await login(
                 page,
                 user_id,
                 user_pw
             )
 
-            print("로그인 성공:", page.url)
+            print(
+                "로그인 성공:",
+                page.url
+            )
 
-            # 2 통합정보
-            page = await open_main_portal(page)
+            # 통합정보
+            page = await open_main_portal(
+                page
+            )
 
-            print("통합정보 이동:", page.url)
+            print(
+                "통합정보 이동:",
+                page.url
+            )
 
             await asyncio.sleep(2)
 
-            # 3 메뉴 이동
-            await navigate_to_daily_check(page)
+            # 메뉴 이동
+            await navigate_to_daily_check(
+                page
+            )
 
-            print("일일체크 페이지:", page.url)
+            print(
+                "일일체크 페이지:",
+                page.url
+            )
 
-            # 4 저장
-            if not await find_and_click_save(page):
+            # 저장
+            if not await find_and_click_save(
+                page
+            ):
 
                 raise RuntimeError(
                     "'저장' 버튼을 찾지 못했습니다."
@@ -498,12 +558,16 @@ async def run_daily_check(
 
             await asyncio.sleep(2)
 
-            # 5 예 버튼
+            # 예 버튼
             success_yes = False
 
             for _ in range(6):
 
-                success_yes = await find_and_click_yes(page)
+                success_yes = (
+                    await find_and_click_yes(
+                        page
+                    )
+                )
 
                 if success_yes:
                     break
@@ -520,7 +584,7 @@ async def run_daily_check(
 
             await asyncio.sleep(2)
 
-            # 6 닫기
+            # 닫기
             await try_click_by_text(
                 page,
                 "닫기",
@@ -536,7 +600,7 @@ async def run_daily_check(
 
             await asyncio.sleep(1)
 
-            # 7 로그아웃
+            # 로그아웃
             await logout(page)
 
             mark_as_done_today(user_id)
@@ -544,10 +608,14 @@ async def run_daily_check(
             return {
                 "ok": True,
                 "status": "success",
-                "message": "일일체크가 완료됐어.",
+                "message": "일일체크 완료",
                 "detail": {
                     "user_id": user_id,
-                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "date": (
+                        datetime.now().strftime(
+                            "%Y-%m-%d"
+                        )
+                    ),
                     "url": page.url,
                 },
             }
@@ -559,14 +627,16 @@ async def run_daily_check(
             traceback.print_exc()
 
             try:
+
                 ts = datetime.now().strftime(
                     "%Y%m%d_%H%M%S"
                 )
 
                 await page.screenshot(
                     path=(
-                        f"daily_check_error_"
-                        f"{safe_user_key(user_id)}_{ts}.png"
+                        "daily_check_error_"
+                        f"{safe_user_key(user_id)}_"
+                        f"{ts}.png"
                     )
                 )
 
@@ -634,15 +704,6 @@ async def api_check(req: CheckRequest):
         result = await run_daily_check(
             req.user_id,
             req.user_pw
-        )
-
-    if not result["ok"]:
-
-        return CheckResponse(
-            ok=False,
-            status="error",
-            message=result["message"],
-            detail=result.get("detail")
         )
 
     return CheckResponse(**result)
