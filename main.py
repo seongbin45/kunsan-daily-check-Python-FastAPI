@@ -3,6 +3,7 @@
 import os
 import re
 import asyncio
+import traceback
 
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -32,18 +33,11 @@ run_lock = asyncio.Lock()
 
 
 # =========================
-# 요청 / 응답 모델
+# 요청 모델
 # =========================
 class CheckRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     user_pw: str = Field(..., min_length=1)
-
-
-class CheckResponse(BaseModel):
-    ok: bool
-    status: str
-    message: str
-    detail: Optional[Dict[str, Any]] = None
 
 
 # =========================
@@ -65,6 +59,7 @@ def is_already_done_today(user_id: str) -> bool:
         return False
 
     try:
+
         with open(path, "r", encoding="utf-8") as f:
             last_date = f.read().strip()
 
@@ -82,6 +77,7 @@ def mark_as_done_today(user_id: str):
     path = done_file_path(user_id)
 
     with open(path, "w", encoding="utf-8") as f:
+
         f.write(
             datetime.now().strftime("%Y-%m-%d")
         )
@@ -274,7 +270,7 @@ async def login(
     user_pw: str
 ):
 
-    print("로그인 페이지 이동 시작")
+    print("===== LOGIN START =====")
 
     await page.goto(
         LOGIN_URL,
@@ -282,7 +278,7 @@ async def login(
         timeout=30000
     )
 
-    print("로그인 페이지 URL:", page.url)
+    print("현재 URL:", page.url)
 
     id_input = page.locator(
         "input#id, input[name='id'], input[type='text']"
@@ -315,7 +311,7 @@ async def login(
 
             if await loc.count() > 0:
 
-                print("로그인 버튼 클릭:", sel)
+                print("로그인 버튼:", sel)
 
                 await loc.click(force=True)
 
@@ -328,7 +324,7 @@ async def login(
 
     if not clicked:
 
-        print("엔터키 로그인 시도")
+        print("엔터 로그인 시도")
 
         await page.keyboard.press("Enter")
 
@@ -356,7 +352,7 @@ async def login(
 # =========================
 async def open_main_portal(page):
 
-    print("통합정보 클릭 시도")
+    print("===== 통합정보 이동 =====")
 
     clicked = await try_click_by_text(
         page,
@@ -392,6 +388,8 @@ async def open_main_portal(page):
 # 메뉴 이동
 # =========================
 async def navigate_to_daily_check(page):
+
+    print("===== 메뉴 이동 =====")
 
     print("현재 URL:", page.url)
 
@@ -445,7 +443,7 @@ async def navigate_to_daily_check(page):
 # =========================
 async def logout(page):
 
-    print("로그아웃 시도")
+    print("===== 로그아웃 =====")
 
     clicked = await try_click_by_text(
         page,
@@ -491,7 +489,7 @@ async def run_daily_check(
             "message": "오늘 이미 완료됨",
             "detail": {
                 "user_id": user_id
-            },
+            }
         }
 
     async with async_playwright() as p:
@@ -514,7 +512,7 @@ async def run_daily_check(
             viewport={
                 "width": 1280,
                 "height": 900
-            },
+            }
         )
 
         page = await context.new_page()
@@ -530,28 +528,22 @@ async def run_daily_check(
                 user_pw
             )
 
-            print("로그인 성공")
-
             # 통합정보
             page = await open_main_portal(page)
-
-            print("통합정보 이동 성공")
-
-            await asyncio.sleep(2)
 
             # 메뉴 이동
             await navigate_to_daily_check(page)
 
-            print("일일체크 페이지 이동 성공")
-
             # 저장
-            if not await find_and_click_save(page):
+            save_clicked = await find_and_click_save(page)
+
+            print("저장 버튼 결과:", save_clicked)
+
+            if not save_clicked:
 
                 raise RuntimeError(
                     "'저장' 버튼을 찾지 못했습니다."
                 )
-
-            print("저장 버튼 클릭 성공")
 
             await asyncio.sleep(2)
 
@@ -569,13 +561,13 @@ async def run_daily_check(
 
                 await asyncio.sleep(0.8)
 
+            print("예 버튼 결과:", success_yes)
+
             if not success_yes:
 
                 raise RuntimeError(
                     "최종 확인('예') 버튼을 찾지 못했습니다."
                 )
-
-            print("예 버튼 클릭 성공")
 
             await asyncio.sleep(2)
 
@@ -593,8 +585,6 @@ async def run_daily_check(
                 exact=True
             )
 
-            await asyncio.sleep(1)
-
             # 로그아웃
             await logout(page)
 
@@ -608,18 +598,12 @@ async def run_daily_check(
                 "message": "일일체크 완료",
                 "detail": {
                     "user_id": user_id,
-                    "date": (
-                        datetime.now().strftime(
-                            "%Y-%m-%d"
-                        )
-                    ),
-                    "url": page.url,
-                },
+                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "url": page.url
+                }
             }
 
         except Exception as e:
-
-            import traceback
 
             error_text = traceback.format_exc()
 
@@ -633,15 +617,18 @@ async def run_daily_check(
                     "%Y%m%d_%H%M%S"
                 )
 
-                await page.screenshot(
-                    path=(
-                        "daily_check_error_"
-                        f"{safe_user_key(user_id)}_"
-                        f"{ts}.png"
-                    )
+                screenshot_path = (
+                    f"daily_check_error_"
+                    f"{safe_user_key(user_id)}_"
+                    f"{ts}.png"
                 )
 
-                print("스크린샷 저장 완료")
+                await page.screenshot(
+                    path=screenshot_path,
+                    full_page=True
+                )
+
+                print("스크린샷 저장:", screenshot_path)
 
             except Exception as screenshot_error:
 
@@ -656,8 +643,8 @@ async def run_daily_check(
                 "message": str(e),
                 "detail": {
                     "user_id": user_id,
-                    "url": page.url,
-                },
+                    "url": page.url
+                }
             }
 
         finally:
@@ -665,7 +652,6 @@ async def run_daily_check(
             print("브라우저 종료")
 
             await context.close()
-
             await browser.close()
 
 
@@ -680,7 +666,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Daily Check API",
     version="1.0.0",
-    lifespan=lifespan,
+    lifespan=lifespan
 )
 
 
@@ -702,20 +688,42 @@ async def health():
     }
 
 
-@app.post(
-    "/api/check",
-    response_model=CheckResponse
-)
+# =========================
+# API
+# =========================
+@app.post("/api/check")
 async def api_check(req: CheckRequest):
 
-    async with run_lock:
+    print("===== API REQUEST START =====")
+    print("user_id:", req.user_id)
+    print("===== API REQUEST END =====")
 
-        result = await run_daily_check(
-            req.user_id,
-            req.user_pw
-        )
+    try:
 
-    return CheckResponse(**result)
+        async with run_lock:
+
+            result = await run_daily_check(
+                req.user_id,
+                req.user_pw
+            )
+
+        print("===== API RESULT =====")
+        print(result)
+
+        return result
+
+    except Exception as e:
+
+        error_text = traceback.format_exc()
+
+        print("===== API ERROR =====")
+        print(error_text)
+
+        return {
+            "ok": False,
+            "status": "server_error",
+            "message": str(e)
+        }
 
 
 # =========================
