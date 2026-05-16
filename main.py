@@ -1,8 +1,9 @@
 # main.py
+
 import os
 import re
-import json
 import asyncio
+
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional, Dict, Any
@@ -17,7 +18,6 @@ from playwright.async_api import async_playwright
 # =========================
 BASE_URL = "https://kis.kunsan.ac.kr"
 LOGIN_URL = f"{BASE_URL}/login.do"
-MAIN_URL = f"{BASE_URL}/main/index.do"
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -51,9 +51,6 @@ class CheckResponse(BaseModel):
 # 유틸
 # =========================
 def safe_user_key(user_id: str) -> str:
-    """
-    파일명에 들어갈 수 있도록 학번에서 안전한 문자만 남김.
-    """
     return re.sub(r"[^0-9A-Za-z_-]", "_", user_id)
 
 
@@ -63,68 +60,114 @@ def done_file_path(user_id: str) -> str:
 
 def is_already_done_today(user_id: str) -> bool:
     path = done_file_path(user_id)
+
     if not os.path.exists(path):
         return False
+
     try:
         with open(path, "r", encoding="utf-8") as f:
             last_date = f.read().strip()
+
         return last_date == datetime.now().strftime("%Y-%m-%d")
+
     except Exception:
         return False
 
 
 def mark_as_done_today(user_id: str) -> None:
     path = done_file_path(user_id)
+
     with open(path, "w", encoding="utf-8") as f:
         f.write(datetime.now().strftime("%Y-%m-%d"))
 
 
-async def try_click_by_text(page, text: str, exact: bool = True, timeout_ms: int = 3000) -> bool:
-    """
-    페이지 본문에서 텍스트 기반 클릭 시도.
-    """
+# =========================
+# 클릭 유틸
+# =========================
+async def try_click_by_text(
+    page,
+    text: str,
+    exact: bool = True,
+    timeout_ms: int = 3000
+) -> bool:
+
     try:
         locator = page.get_by_text(text, exact=exact).first
-        await locator.wait_for(state="visible", timeout=timeout_ms)
+
+        await locator.wait_for(
+            state="visible",
+            timeout=timeout_ms
+        )
+
         await locator.click(force=True)
+
         return True
+
     except Exception:
         return False
 
 
-async def try_click_in_frames(page, text: str, exact: bool = True) -> bool:
-    """
-    모든 frame을 훑어서 텍스트 클릭 시도.
-    """
+async def try_click_in_frames(
+    page,
+    text: str,
+    exact: bool = True
+) -> bool:
+
     for frame in page.frames:
         try:
-            locator = frame.get_by_text(text, exact=exact).first
+            locator = frame.get_by_text(
+                text,
+                exact=exact
+            ).first
+
             if await locator.count() > 0:
                 await locator.click(force=True)
                 return True
+
         except Exception:
             continue
+
     return False
 
 
-async def wait_for_any_popup_confirm(page, timeout_sec: int = 3) -> bool:
-    """
-    '확인' 같은 팝업 버튼이 뜨면 눌러줌.
-    """
+async def wait_for_any_popup_confirm(
+    page,
+    timeout_sec: int = 3
+) -> bool:
+
     end = asyncio.get_event_loop().time() + timeout_sec
+
     while asyncio.get_event_loop().time() < end:
+
         try:
-            if await try_click_by_text(page, "확인", exact=True, timeout_ms=700):
+            if await try_click_by_text(
+                page,
+                "확인",
+                exact=True,
+                timeout_ms=700
+            ):
                 return True
-            if await try_click_in_frames(page, "확인", exact=True):
+
+            if await try_click_in_frames(
+                page,
+                "확인",
+                exact=True
+            ):
                 return True
+
         except Exception:
             pass
+
         await asyncio.sleep(0.3)
+
     return False
 
 
+# =========================
+# 버튼 찾기
+# =========================
 async def find_and_click_save(page) -> bool:
+
     selectors = [
         "button:has-text('저장')",
         "input[value='저장']",
@@ -132,12 +175,15 @@ async def find_and_click_save(page) -> bool:
         ".btn_save",
         "text=저장",
     ]
+
     for sel in selectors:
         try:
             loc = page.locator(sel).first
+
             if await loc.count() > 0:
                 await loc.click(force=True)
                 return True
+
         except Exception:
             continue
 
@@ -145,214 +191,344 @@ async def find_and_click_save(page) -> bool:
         for sel in selectors:
             try:
                 loc = frame.locator(sel).first
+
                 if await loc.count() > 0:
                     await loc.click(force=True)
                     return True
+
             except Exception:
                 continue
+
     return False
 
 
 async def find_and_click_yes(page) -> bool:
-    """
-    최종 팝업의 '예' 버튼 클릭.
-    """
+
     candidates = ["예", "확인", "OK", "Yes", "yes"]
+
     for text in candidates:
-        if await try_click_by_text(page, text, exact=True, timeout_ms=1200):
+
+        if await try_click_by_text(
+            page,
+            text,
+            exact=True,
+            timeout_ms=1200
+        ):
             return True
-        if await try_click_in_frames(page, text, exact=True):
+
+        if await try_click_in_frames(
+            page,
+            text,
+            exact=True
+        ):
             return True
+
     return False
 
 
-async def login(page, user_id: str, user_pw: str) -> None:
-    await page.goto(LOGIN_URL, wait_until="networkidle", timeout=30000)
+# =========================
+# 로그인
+# =========================
+async def login(page, user_id: str, user_pw: str):
 
-    # 입력칸을 넓게 찾음
-    id_input = page.locator("input#id, input[name='id'], input[type='text']").first
-    pw_input = page.locator("input#pw, input[name='pw'], input[type='password']").first
+    await page.goto(
+        LOGIN_URL,
+        wait_until="networkidle",
+        timeout=30000
+    )
 
-    await id_input.wait_for(state="visible", timeout=DEFAULT_TIMEOUT_MS)
+    id_input = page.locator(
+        "input#id, input[name='id'], input[type='text']"
+    ).first
+
+    pw_input = page.locator(
+        "input#pw, input[name='pw'], input[type='password']"
+    ).first
+
+    await id_input.wait_for(
+        state="visible",
+        timeout=DEFAULT_TIMEOUT_MS
+    )
+
     await id_input.fill(user_id)
     await pw_input.fill(user_pw)
 
-    # 로그인 버튼 우선 클릭
     clicked = False
-    for sel in ["#loginBtn", "button:has-text('로그인')", "input[value='로그인']"]:
+
+    for sel in [
+        "#loginBtn",
+        "button:has-text('로그인')",
+        "input[value='로그인']"
+    ]:
+
         try:
             loc = page.locator(sel).first
+
             if await loc.count() > 0:
                 await loc.click(force=True)
                 clicked = True
                 break
+
         except Exception:
             continue
 
     if not clicked:
         await page.keyboard.press("Enter")
 
-    # 로그인 완료 대기
     await asyncio.sleep(1.5)
-    await wait_for_any_popup_confirm(page, timeout_sec=3)
 
-    # 로그인 페이지가 더 이상 아니어야 함
+    await wait_for_any_popup_confirm(
+        page,
+        timeout_sec=3
+    )
+
     for _ in range(20):
-        current_url = page.url
-        if "login.do" not in current_url:
+
+        if "login.do" not in page.url:
             return
+
         await asyncio.sleep(0.5)
-        await wait_for_any_popup_confirm(page, timeout_sec=1)
 
-    raise RuntimeError("로그인에 실패했거나 로그인 페이지를 벗어나지 못했습니다.")
+    raise RuntimeError(
+        "로그인에 실패했거나 로그인 페이지를 벗어나지 못했습니다."
+    )
 
 
-async def open_main_portal(page) -> None:
-    # 통합정보 클릭
-    clicked = await try_click_by_text(page, "통합정보", exact=True, timeout_ms=6000)
+# =========================
+# 메뉴 이동
+# =========================
+async def open_main_portal(page):
+
+    clicked = await try_click_by_text(
+        page,
+        "통합정보",
+        exact=True,
+        timeout_ms=6000
+    )
+
     if not clicked:
-        clicked = await try_click_in_frames(page, "통합정보", exact=True)
+        clicked = await try_click_in_frames(
+            page,
+            "통합정보",
+            exact=True
+        )
 
     if not clicked:
-        raise RuntimeError("'통합정보' 메뉴를 찾지 못했습니다.")
+        raise RuntimeError(
+            "'통합정보' 메뉴를 찾지 못했습니다."
+        )
 
-    # 새 탭/새 창 또는 현재 페이지 이동 둘 다 대응
     await asyncio.sleep(2)
 
 
-async def navigate_to_daily_check(page) -> None:
-    # 화면 구조가 frame/nexacro 형태일 수 있어서 텍스트 기반으로 여러 번 시도
-    steps = ["학생서비스", "학생생활관", "일일체크신청"]
+async def navigate_to_daily_check(page):
+
+    steps = [
+        "학생서비스",
+        "학생생활관",
+        "일일체크신청"
+    ]
+
     for step in steps:
-        clicked = await try_click_by_text(page, step, exact=True, timeout_ms=5000)
+
+        clicked = await try_click_by_text(
+            page,
+            step,
+            exact=True,
+            timeout_ms=5000
+        )
+
         if not clicked:
-            clicked = await try_click_in_frames(page, step, exact=True)
+            clicked = await try_click_in_frames(
+                page,
+                step,
+                exact=True
+            )
+
         if not clicked:
-            raise RuntimeError(f"'{step}' 메뉴를 찾지 못했습니다.")
+            raise RuntimeError(
+                f"'{step}' 메뉴를 찾지 못했습니다."
+            )
+
         await asyncio.sleep(1.5)
 
 
-async def logout(page) -> None:
-    # 로그아웃 클릭
-    clicked = await try_click_by_text(page, "로그아웃", exact=True, timeout_ms=4000)
+# =========================
+# 로그아웃
+# =========================
+async def logout(page):
+
+    clicked = await try_click_by_text(
+        page,
+        "로그아웃",
+        exact=True,
+        timeout_ms=4000
+    )
+
     if not clicked:
-        clicked = await try_click_in_frames(page, "로그아웃", exact=True)
+        clicked = await try_click_in_frames(
+            page,
+            "로그아웃",
+            exact=True
+        )
 
     if not clicked:
         return
 
     await asyncio.sleep(1)
-    await wait_for_any_popup_confirm(page, timeout_sec=3)
+
+    await wait_for_any_popup_confirm(
+        page,
+        timeout_sec=3
+    )
 
 
-async def run_daily_check(user_id: str, user_pw: str) -> Dict[str, Any]:
+# =========================
+# 메인 실행
+# =========================
+async def run_daily_check(
+    user_id: str,
+    user_pw: str
+) -> Dict[str, Any]:
+
     if is_already_done_today(user_id):
+
         return {
             "ok": True,
             "status": "skipped",
             "message": "오늘은 이미 완료된 계정이야.",
-            "detail": {"user_id": user_id},
-        }
-    
-async with async_playwright() as p:
-    browser = await p.chromium.launch(
-        headless=True,
-        args=[
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu"
-        ]
-    )
-
-    context = await browser.new_context(
-        java_script_enabled=True,
-        user_agent=USER_AGENT,
-        viewport={"width": 1280, "height": 900},
-    )
-
-    page = await context.new_page()
-
-    try:
-        # 1) 로그인
-        await login(page, user_id, user_pw)
-
-        # 2) 통합정보 진입
-        await open_main_portal(page)
-
-        # 메인 페이지/새 창 전환 여유
-        await asyncio.sleep(2)
-
-        # 3) 학생서비스 -> 학생생활관 -> 일일체크신청
-        await navigate_to_daily_check(page)
-
-        # 4) 저장
-        if not await find_and_click_save(page):
-            raise RuntimeError("'저장' 버튼을 찾지 못했습니다.")
-
-        await asyncio.sleep(2)
-
-        # 5) 예
-        success_yes = False
-
-        for _ in range(6):
-            success_yes = await find_and_click_yes(page)
-
-            if success_yes:
-                break
-
-            await asyncio.sleep(0.8)
-
-        if not success_yes:
-            raise RuntimeError("최종 확인('예') 버튼을 찾지 못했습니다.")
-
-        await asyncio.sleep(2)
-
-        # 6) 닫기
-        await try_click_by_text(page, "닫기", exact=True, timeout_ms=3000)
-        await try_click_in_frames(page, "닫기", exact=True)
-
-        await asyncio.sleep(1)
-
-        # 7) 로그아웃
-        await logout(page)
-
-        mark_as_done_today(user_id)
-
-        return {
-            "ok": True,
-            "status": "success",
-            "message": "일일체크가 완료됐어.",
             "detail": {
-                "user_id": user_id,
-                "date": datetime.now().strftime("%Y-%m-%d"),
-                "url": page.url,
+                "user_id": user_id
             },
         }
 
-    except Exception as e:
-        try:
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    async with async_playwright() as p:
 
-            await page.screenshot(
-                path=f"daily_check_error_{safe_user_key(user_id)}_{ts}.png"
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu"
+            ]
+        )
+
+        context = await browser.new_context(
+            java_script_enabled=True,
+            user_agent=USER_AGENT,
+            viewport={
+                "width": 1280,
+                "height": 900
+            },
+        )
+
+        page = await context.new_page()
+
+        try:
+            # 1 로그인
+            await login(
+                page,
+                user_id,
+                user_pw
             )
 
-        except Exception:
-            pass
+            # 2 통합정보
+            await open_main_portal(page)
 
-        return {
-            "ok": False,
-            "status": "error",
-            "message": str(e),
-            "detail": {
-                "user_id": user_id,
-                "url": page.url,
-            },
-        }
+            await asyncio.sleep(2)
 
-    finally:
-        await context.close()
-        await browser.close()
+            # 3 메뉴 이동
+            await navigate_to_daily_check(page)
+
+            # 4 저장
+            if not await find_and_click_save(page):
+                raise RuntimeError(
+                    "'저장' 버튼을 찾지 못했습니다."
+                )
+
+            await asyncio.sleep(2)
+
+            # 5 예 버튼
+            success_yes = False
+
+            for _ in range(6):
+
+                success_yes = await find_and_click_yes(page)
+
+                if success_yes:
+                    break
+
+                await asyncio.sleep(0.8)
+
+            if not success_yes:
+                raise RuntimeError(
+                    "최종 확인('예') 버튼을 찾지 못했습니다."
+                )
+
+            await asyncio.sleep(2)
+
+            # 6 닫기
+            await try_click_by_text(
+                page,
+                "닫기",
+                exact=True,
+                timeout_ms=3000
+            )
+
+            await try_click_in_frames(
+                page,
+                "닫기",
+                exact=True
+            )
+
+            await asyncio.sleep(1)
+
+            # 7 로그아웃
+            await logout(page)
+
+            mark_as_done_today(user_id)
+
+            return {
+                "ok": True,
+                "status": "success",
+                "message": "일일체크가 완료됐어.",
+                "detail": {
+                    "user_id": user_id,
+                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "url": page.url,
+                },
+            }
+
+        except Exception as e:
+
+            try:
+                ts = datetime.now().strftime(
+                    "%Y%m%d_%H%M%S"
+                )
+
+                await page.screenshot(
+                    path=(
+                        f"daily_check_error_"
+                        f"{safe_user_key(user_id)}_{ts}.png"
+                    )
+                )
+
+            except Exception:
+                pass
+
+            return {
+                "ok": False,
+                "status": "error",
+                "message": str(e),
+                "detail": {
+                    "user_id": user_id,
+                    "url": page.url,
+                },
+            }
+
+        finally:
+            await context.close()
+            await browser.close()
 
 
 # =========================
@@ -372,17 +548,30 @@ app = FastAPI(
 
 @app.get("/health")
 async def health():
-    return {"ok": True, "status": "healthy"}
+
+    return {
+        "ok": True,
+        "status": "healthy"
+    }
 
 
-@app.post("/api/check", response_model=CheckResponse)
+@app.post(
+    "/api/check",
+    response_model=CheckResponse
+)
 async def api_check(req: CheckRequest):
+
     async with run_lock:
-        result = await run_daily_check(req.user_id, req.user_pw)
+        result = await run_daily_check(
+            req.user_id,
+            req.user_pw
+        )
 
     if not result["ok"]:
-        # 서버 내부 오류 성격이면 500, 그 외는 400으로 주고 싶다면 분기 가능
-        raise HTTPException(status_code=400, detail=result)
+        raise HTTPException(
+            status_code=400,
+            detail=result
+        )
 
     return CheckResponse(**result)
 
@@ -390,5 +579,4 @@ async def api_check(req: CheckRequest):
 # =========================
 # 실행
 # =========================
-# 실행 예:
 # uvicorn main:app --host 0.0.0.0 --port 8000
