@@ -297,28 +297,36 @@ async def login(page, user_id: str, user_pw: str):
 # =========================
 # 메뉴 이동
 # =========================
-async def open_main_portal(page):
+async def open_main_portal(context, page):
 
-    clicked = await try_click_by_text(
-        page,
-        "통합정보",
-        exact=True,
-        timeout_ms=6000
-    )
+    new_page = None
 
-    if not clicked:
-        clicked = await try_click_in_frames(
+    async with context.expect_page() as new_page_info:
+
+        clicked = await try_click_by_text(
             page,
             "통합정보",
-            exact=True
+            exact=True,
+            timeout_ms=6000
         )
 
-    if not clicked:
-        raise RuntimeError(
-            "'통합정보' 메뉴를 찾지 못했습니다."
-        )
+        if not clicked:
+            clicked = await try_click_in_frames(
+                page,
+                "통합정보",
+                exact=True
+            )
 
-    await asyncio.sleep(2)
+        if not clicked:
+            raise RuntimeError("'통합정보' 메뉴를 찾지 못했습니다.")
+
+    try:
+        new_page = await new_page_info.value
+        await new_page.wait_for_load_state("networkidle")
+        return new_page
+
+    except Exception:
+        return page
 
 
 async def navigate_to_daily_check(page):
