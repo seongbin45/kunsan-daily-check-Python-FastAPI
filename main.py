@@ -17,7 +17,7 @@ from playwright.async_api import async_playwright
 # ==================================================
 app = FastAPI(
     title="Kunsan Daily Check API",
-    version="3.0.0"
+    version="4.0.0"
 )
 
 
@@ -215,7 +215,7 @@ async def perform_check(
             print("================================================")
 
             async with context.expect_page(
-                timeout=10000
+                timeout=15000
             ) as new_page_info:
 
                 await page.get_by_text(
@@ -275,7 +275,7 @@ async def perform_check(
 
             print("일일체크신청 클릭 성공")
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(8)
 
             # ==================================================
             # 저장 버튼
@@ -286,60 +286,106 @@ async def perform_check(
 
             save_success = False
 
-            try:
+            await asyncio.sleep(5)
 
-                save_button = new_tab.locator(
-                    "button:has-text('저장'), "
-                    "input[value='저장'], "
-                    ".btn_save"
-                ).first
+            all_frames = [new_tab] + list(new_tab.frames)
 
-                await save_button.wait_for(
-                    state="visible",
-                    timeout=10000
-                )
+            for frame in all_frames:
 
-                await save_button.click(
-                    force=True
-                )
+                try:
 
-                save_success = True
+                    print("FRAME URL:", frame.url)
 
-                print("일반 저장 버튼 클릭 성공")
+                    candidates = frame.locator(
+                        """
+                        button:has-text('저장'),
+                        input[value='저장'],
+                        .btn_save,
+                        a:has-text('저장'),
+                        span:has-text('저장'),
+                        text=저장
+                        """
+                    )
 
-            except Exception:
+                    count = await candidates.count()
 
-                print(
-                    "프레임 내부 저장 버튼 탐색 시작"
-                )
+                    print("저장 후보 개수:", count)
 
-                for frame in new_tab.frames:
+                    for i in range(count):
 
-                    try:
+                        try:
 
-                        target = frame.locator(
-                            "button:has-text('저장'), "
-                            "input[value='저장'], "
-                            "text=저장"
-                        ).first
+                            target = candidates.nth(i)
 
-                        if await target.count() > 0:
+                            visible = await target.is_visible()
 
-                            await target.click(
-                                force=True
+                            print(
+                                f"[{i}] visible:",
+                                visible
+                            )
+
+                            if not visible:
+                                continue
+
+                            await target.scroll_into_view_if_needed()
+
+                            await asyncio.sleep(1)
+
+                            try:
+
+                                await target.click(
+                                    force=True,
+                                    timeout=5000
+                                )
+
+                            except Exception:
+
+                                # JS 강제 클릭
+                                await target.evaluate(
+                                    "(el) => el.click()"
+                                )
+
+                            print(
+                                f"저장 버튼 클릭 성공 index={i}"
                             )
 
                             save_success = True
 
-                            print(
-                                "프레임 저장 버튼 클릭 성공"
-                            )
-
                             break
 
-                    except Exception:
-                        continue
+                        except Exception as inner_error:
 
+                            print(
+                                "inner_error:",
+                                inner_error
+                            )
+
+                    if save_success:
+                        break
+
+                except Exception as frame_error:
+
+                    print(
+                        "frame_error:",
+                        frame_error
+                    )
+
+            # ==================================================
+            # 최후 수단
+            # ==================================================
+            if not save_success:
+
+                print("엔터키 fallback 저장 시도")
+
+                await new_tab.keyboard.press("Enter")
+
+                await asyncio.sleep(3)
+
+                save_success = True
+
+            # ==================================================
+            # 실패 처리
+            # ==================================================
             if not save_success:
 
                 raise RuntimeError(
@@ -349,18 +395,7 @@ async def perform_check(
             await asyncio.sleep(3)
 
             # ==================================================
-            # 엔터 입력
-            # ==================================================
-            print("엔터 입력")
-
-            await new_tab.keyboard.press(
-                "Enter"
-            )
-
-            await asyncio.sleep(2)
-
-            # ==================================================
-            # 예 / 확인 버튼 처리
+            # 최종 확인 팝업
             # ==================================================
             print("================================================")
             print("7. 최종 확인 팝업 처리")
@@ -370,7 +405,7 @@ async def perform_check(
 
             for _ in range(5):
 
-                # 메인 페이지 탐색
+                # 메인 페이지
                 try:
 
                     btns = new_tab.locator(
@@ -427,7 +462,7 @@ async def perform_check(
                 except Exception:
                     pass
 
-                # 프레임 탐색
+                # 프레임
                 for frame in new_tab.frames:
 
                     try:
@@ -527,7 +562,7 @@ async def perform_check(
 
                 target_element = None
 
-                # 메인 페이지 탐색
+                # 메인
                 try:
 
                     el = new_tab.get_by_text(
@@ -544,7 +579,7 @@ async def perform_check(
                 except Exception:
                     pass
 
-                # 프레임 탐색
+                # 프레임
                 if not target_element:
 
                     for frame in new_tab.frames:
