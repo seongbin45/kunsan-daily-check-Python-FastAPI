@@ -98,6 +98,7 @@ async def try_click_by_text(
 ) -> bool:
 
     try:
+
         locator = page.get_by_text(
             text,
             exact=exact
@@ -125,6 +126,7 @@ async def try_click_in_frames(
     for frame in page.frames:
 
         try:
+
             locator = frame.get_by_text(
                 text,
                 exact=exact
@@ -158,6 +160,7 @@ async def wait_for_any_popup_confirm(
     ):
 
         try:
+
             if await try_click_by_text(
                 page,
                 "확인",
@@ -197,6 +200,7 @@ async def find_and_click_save(page) -> bool:
     for sel in selectors:
 
         try:
+
             loc = page.locator(sel).first
 
             if await loc.count() > 0:
@@ -213,6 +217,7 @@ async def find_and_click_save(page) -> bool:
         for sel in selectors:
 
             try:
+
                 loc = frame.locator(sel).first
 
                 if await loc.count() > 0:
@@ -269,11 +274,15 @@ async def login(
     user_pw: str
 ):
 
+    print("로그인 페이지 이동 시작")
+
     await page.goto(
         LOGIN_URL,
-        wait_until="networkidle",
+        wait_until="domcontentloaded",
         timeout=30000
     )
+
+    print("로그인 페이지 URL:", page.url)
 
     id_input = page.locator(
         "input#id, input[name='id'], input[type='text']"
@@ -301,9 +310,12 @@ async def login(
     ]:
 
         try:
+
             loc = page.locator(sel).first
 
             if await loc.count() > 0:
+
+                print("로그인 버튼 클릭:", sel)
 
                 await loc.click(force=True)
 
@@ -315,14 +327,19 @@ async def login(
             continue
 
     if not clicked:
+
+        print("엔터키 로그인 시도")
+
         await page.keyboard.press("Enter")
 
-    await asyncio.sleep(2)
+    await asyncio.sleep(3)
 
     await wait_for_any_popup_confirm(
         page,
         timeout_sec=3
     )
+
+    print("로그인 후 URL:", page.url)
 
     for _ in range(20):
 
@@ -331,9 +348,7 @@ async def login(
 
         await asyncio.sleep(0.5)
 
-    raise RuntimeError(
-        "로그인 실패"
-    )
+    raise RuntimeError("로그인 실패")
 
 
 # =========================
@@ -358,20 +373,17 @@ async def open_main_portal(page):
             exact=True
         )
 
+    print("통합정보 클릭 결과:", clicked)
+
     if not clicked:
 
         raise RuntimeError(
             "'통합정보' 메뉴를 찾지 못했습니다."
         )
 
-    print("통합정보 클릭 성공")
-
     await asyncio.sleep(5)
 
-    print(
-        "통합정보 클릭 후 URL:",
-        page.url
-    )
+    print("통합정보 이동 후 URL:", page.url)
 
     return page
 
@@ -391,12 +403,6 @@ async def navigate_to_daily_check(page):
             f"FRAME[{idx}] URL:",
             frame.url
         )
-
-    html = await page.content()
-
-    print("HTML 길이:", len(html))
-
-    print(html[:3000])
 
     steps = [
         "학생서비스",
@@ -423,10 +429,7 @@ async def navigate_to_daily_check(page):
                 exact=True
             )
 
-        print(
-            f"{step} 클릭 결과:",
-            clicked
-        )
+        print(f"{step} 클릭 결과:", clicked)
 
         if not clicked:
 
@@ -442,6 +445,8 @@ async def navigate_to_daily_check(page):
 # =========================
 async def logout(page):
 
+    print("로그아웃 시도")
+
     clicked = await try_click_by_text(
         page,
         "로그아웃",
@@ -456,6 +461,8 @@ async def logout(page):
             "로그아웃",
             exact=True
         )
+
+    print("로그아웃 클릭 결과:", clicked)
 
     if not clicked:
         return
@@ -494,7 +501,10 @@ async def run_daily_check(
             args=[
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-gpu"
+                "--disable-gpu",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-web-security",
+                "--disable-features=IsolateOrigins,site-per-process"
             ]
         )
 
@@ -511,6 +521,8 @@ async def run_daily_check(
 
         try:
 
+            print("===== RUN START =====")
+
             # 로그인
             await login(
                 page,
@@ -518,37 +530,22 @@ async def run_daily_check(
                 user_pw
             )
 
-            print(
-                "로그인 성공:",
-                page.url
-            )
+            print("로그인 성공")
 
             # 통합정보
-            page = await open_main_portal(
-                page
-            )
+            page = await open_main_portal(page)
 
-            print(
-                "통합정보 이동:",
-                page.url
-            )
+            print("통합정보 이동 성공")
 
             await asyncio.sleep(2)
 
             # 메뉴 이동
-            await navigate_to_daily_check(
-                page
-            )
+            await navigate_to_daily_check(page)
 
-            print(
-                "일일체크 페이지:",
-                page.url
-            )
+            print("일일체크 페이지 이동 성공")
 
             # 저장
-            if not await find_and_click_save(
-                page
-            ):
+            if not await find_and_click_save(page):
 
                 raise RuntimeError(
                     "'저장' 버튼을 찾지 못했습니다."
@@ -564,9 +561,7 @@ async def run_daily_check(
             for _ in range(6):
 
                 success_yes = (
-                    await find_and_click_yes(
-                        page
-                    )
+                    await find_and_click_yes(page)
                 )
 
                 if success_yes:
@@ -605,6 +600,8 @@ async def run_daily_check(
 
             mark_as_done_today(user_id)
 
+            print("===== RUN SUCCESS =====")
+
             return {
                 "ok": True,
                 "status": "success",
@@ -624,7 +621,11 @@ async def run_daily_check(
 
             import traceback
 
-            traceback.print_exc()
+            error_text = traceback.format_exc()
+
+            print("===== ERROR START =====")
+            print(error_text)
+            print("===== ERROR END =====")
 
             try:
 
@@ -640,8 +641,14 @@ async def run_daily_check(
                     )
                 )
 
-            except Exception:
-                pass
+                print("스크린샷 저장 완료")
+
+            except Exception as screenshot_error:
+
+                print(
+                    "스크린샷 저장 실패:",
+                    screenshot_error
+                )
 
             return {
                 "ok": False,
@@ -654,6 +661,8 @@ async def run_daily_check(
             }
 
         finally:
+
+            print("브라우저 종료")
 
             await context.close()
 
@@ -712,4 +721,4 @@ async def api_check(req: CheckRequest):
 # =========================
 # 실행
 # =========================
-# uvicorn main:app --host 0.0.0.0 --port 8000
+# uvicorn main:app --host 0.0.0.0 --port 10000
