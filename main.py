@@ -253,98 +253,106 @@ async def run_daily_check(user_id: str, user_pw: str) -> Dict[str, Any]:
             "message": "오늘은 이미 완료된 계정이야.",
             "detail": {"user_id": user_id},
         }
+    
+async with async_playwright() as p:
+    browser = await p.chromium.launch(
+        headless=True,
+        args=[
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu"
+        ]
+    )
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu"
-            ]
-        )
-    
-        context = await browser.new_context(
-            java_script_enabled=True,
-            user_agent=USER_AGENT,
-            viewport={"width": 1280, "height": 900},
-        )
-        
-        page = await context.new_page()
-    
-            try:
-                    # 1) 로그인
-                    await login(page, user_id, user_pw)
-        
-                    # 2) 통합정보 진입
-                    await open_main_portal(page)
-        
-                    # 메인 페이지/새 창 전환 여유
-                    await asyncio.sleep(2)
-        
-                    # 3) 학생서비스 -> 학생생활관 -> 일일체크신청
-                    await navigate_to_daily_check(page)
-        
-                    # 4) 저장
-                    if not await find_and_click_save(page):
-                        raise RuntimeError("'저장' 버튼을 찾지 못했습니다.")
-                    await asyncio.sleep(2)
-        
-                    # 5) 예
-                    success_yes = False
-                    for _ in range(6):
-                        success_yes = await find_and_click_yes(page)
-                        if success_yes:
-                            break
-                        await asyncio.sleep(0.8)
-        
-                    if not success_yes:
-                        raise RuntimeError("최종 확인('예') 버튼을 찾지 못했습니다.")
-        
-                    await asyncio.sleep(2)
-        
-                    # 6) 닫기
-                    await try_click_by_text(page, "닫기", exact=True, timeout_ms=3000)
-                    await try_click_in_frames(page, "닫기", exact=True)
-                    await asyncio.sleep(1)
-        
-                    # 7) 로그아웃
-                    await logout(page)
-        
-                    mark_as_done_today(user_id)
-        
-                    return {
-                        "ok": True,
-                        "status": "success",
-                        "message": "일일체크가 완료됐어.",
-                        "detail": {
-                            "user_id": user_id,
-                            "date": datetime.now().strftime("%Y-%m-%d"),
-                            "url": page.url,
-                        },
-                    }
-    
-            except Exception as e:
-                # 실패 시 스크린샷 저장
-                try:
-                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    await page.screenshot(path=f"daily_check_error_{safe_user_key(user_id)}_{ts}.png")
-                except Exception:
-                    pass
-    
-                return {
-                    "ok": False,
-                    "status": "error",
-                    "message": str(e),
-                    "detail": {
-                        "user_id": user_id,
-                        "url": page.url,
-                    },
-                }
-    
-            finally:
-                await context.close()
-                await browser.close()
+    context = await browser.new_context(
+        java_script_enabled=True,
+        user_agent=USER_AGENT,
+        viewport={"width": 1280, "height": 900},
+    )
+
+    page = await context.new_page()
+
+    try:
+        # 1) 로그인
+        await login(page, user_id, user_pw)
+
+        # 2) 통합정보 진입
+        await open_main_portal(page)
+
+        # 메인 페이지/새 창 전환 여유
+        await asyncio.sleep(2)
+
+        # 3) 학생서비스 -> 학생생활관 -> 일일체크신청
+        await navigate_to_daily_check(page)
+
+        # 4) 저장
+        if not await find_and_click_save(page):
+            raise RuntimeError("'저장' 버튼을 찾지 못했습니다.")
+
+        await asyncio.sleep(2)
+
+        # 5) 예
+        success_yes = False
+
+        for _ in range(6):
+            success_yes = await find_and_click_yes(page)
+
+            if success_yes:
+                break
+
+            await asyncio.sleep(0.8)
+
+        if not success_yes:
+            raise RuntimeError("최종 확인('예') 버튼을 찾지 못했습니다.")
+
+        await asyncio.sleep(2)
+
+        # 6) 닫기
+        await try_click_by_text(page, "닫기", exact=True, timeout_ms=3000)
+        await try_click_in_frames(page, "닫기", exact=True)
+
+        await asyncio.sleep(1)
+
+        # 7) 로그아웃
+        await logout(page)
+
+        mark_as_done_today(user_id)
+
+        return {
+            "ok": True,
+            "status": "success",
+            "message": "일일체크가 완료됐어.",
+            "detail": {
+                "user_id": user_id,
+                "date": datetime.now().strftime("%Y-%m-%d"),
+                "url": page.url,
+            },
+        }
+
+    except Exception as e:
+        try:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            await page.screenshot(
+                path=f"daily_check_error_{safe_user_key(user_id)}_{ts}.png"
+            )
+
+        except Exception:
+            pass
+
+        return {
+            "ok": False,
+            "status": "error",
+            "message": str(e),
+            "detail": {
+                "user_id": user_id,
+                "url": page.url,
+            },
+        }
+
+    finally:
+        await context.close()
+        await browser.close()
 
 
 # =========================
