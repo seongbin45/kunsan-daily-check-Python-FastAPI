@@ -500,9 +500,8 @@ async def run_daily_check(
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
-                "--disable-blink-features=AutomationControlled",
-                "--disable-web-security",
-                "--disable-features=IsolateOrigins,site-per-process"
+                "--disable-setuid-sandbox",
+                "--single-process"
             ]
         )
 
@@ -529,13 +528,19 @@ async def run_daily_check(
             )
 
             # 통합정보
-            page = await open_main_portal(page)
+            page = await open_main_portal(
+                page
+            )
 
             # 메뉴 이동
-            await navigate_to_daily_check(page)
+            await navigate_to_daily_check(
+                page
+            )
 
             # 저장
-            save_clicked = await find_and_click_save(page)
+            save_clicked = await find_and_click_save(
+                page
+            )
 
             print("저장 버튼 결과:", save_clicked)
 
