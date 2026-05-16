@@ -59,6 +59,7 @@ def done_file_path(user_id: str) -> str:
 
 
 def is_already_done_today(user_id: str) -> bool:
+
     path = done_file_path(user_id)
 
     if not os.path.exists(path):
@@ -75,6 +76,7 @@ def is_already_done_today(user_id: str) -> bool:
 
 
 def mark_as_done_today(user_id: str) -> None:
+
     path = done_file_path(user_id)
 
     with open(path, "w", encoding="utf-8") as f:
@@ -114,6 +116,7 @@ async def try_click_in_frames(
 ) -> bool:
 
     for frame in page.frames:
+
         try:
             locator = frame.get_by_text(
                 text,
@@ -121,7 +124,9 @@ async def try_click_in_frames(
             ).first
 
             if await locator.count() > 0:
+
                 await locator.click(force=True)
+
                 return True
 
         except Exception:
@@ -177,23 +182,30 @@ async def find_and_click_save(page) -> bool:
     ]
 
     for sel in selectors:
+
         try:
             loc = page.locator(sel).first
 
             if await loc.count() > 0:
+
                 await loc.click(force=True)
+
                 return True
 
         except Exception:
             continue
 
     for frame in page.frames:
+
         for sel in selectors:
+
             try:
                 loc = frame.locator(sel).first
 
                 if await loc.count() > 0:
+
                     await loc.click(force=True)
+
                     return True
 
             except Exception:
@@ -204,7 +216,13 @@ async def find_and_click_save(page) -> bool:
 
 async def find_and_click_yes(page) -> bool:
 
-    candidates = ["예", "확인", "OK", "Yes", "yes"]
+    candidates = [
+        "예",
+        "확인",
+        "OK",
+        "Yes",
+        "yes"
+    ]
 
     for text in candidates:
 
@@ -229,7 +247,11 @@ async def find_and_click_yes(page) -> bool:
 # =========================
 # 로그인
 # =========================
-async def login(page, user_id: str, user_pw: str):
+async def login(
+    page,
+    user_id: str,
+    user_pw: str
+):
 
     await page.goto(
         LOGIN_URL,
@@ -251,6 +273,7 @@ async def login(page, user_id: str, user_pw: str):
     )
 
     await id_input.fill(user_id)
+
     await pw_input.fill(user_pw)
 
     clicked = False
@@ -265,8 +288,11 @@ async def login(page, user_id: str, user_pw: str):
             loc = page.locator(sel).first
 
             if await loc.count() > 0:
+
                 await loc.click(force=True)
+
                 clicked = True
+
                 break
 
         except Exception:
@@ -275,7 +301,7 @@ async def login(page, user_id: str, user_pw: str):
     if not clicked:
         await page.keyboard.press("Enter")
 
-    await asyncio.sleep(1.5)
+    await asyncio.sleep(2)
 
     await wait_for_any_popup_confirm(
         page,
@@ -299,33 +325,43 @@ async def login(page, user_id: str, user_pw: str):
 # =========================
 async def open_main_portal(context, page):
 
-    new_page = None
+    try:
 
-    async with context.expect_page() as new_page_info:
+        async with context.expect_page(timeout=10000) as new_page_info:
 
-        clicked = await try_click_by_text(
-            page,
-            "통합정보",
-            exact=True,
-            timeout_ms=6000
-        )
-
-        if not clicked:
-            clicked = await try_click_in_frames(
+            clicked = await try_click_by_text(
                 page,
                 "통합정보",
-                exact=True
+                exact=True,
+                timeout_ms=6000
             )
 
-        if not clicked:
-            raise RuntimeError("'통합정보' 메뉴를 찾지 못했습니다.")
+            if not clicked:
 
-    try:
+                clicked = await try_click_in_frames(
+                    page,
+                    "통합정보",
+                    exact=True
+                )
+
+            if not clicked:
+
+                raise RuntimeError(
+                    "'통합정보' 메뉴를 찾지 못했습니다."
+                )
+
         new_page = await new_page_info.value
-        await new_page.wait_for_load_state("networkidle")
+
+        await new_page.wait_for_load_state(
+            "networkidle"
+        )
+
         return new_page
 
     except Exception:
+
+        print("새 창 감지 실패 → 기존 페이지 사용")
+
         return page
 
 
@@ -339,6 +375,8 @@ async def navigate_to_daily_check(page):
 
     for step in steps:
 
+        print(f"메뉴 이동 시도: {step}")
+
         clicked = await try_click_by_text(
             page,
             step,
@@ -347,6 +385,7 @@ async def navigate_to_daily_check(page):
         )
 
         if not clicked:
+
             clicked = await try_click_in_frames(
                 page,
                 step,
@@ -354,6 +393,7 @@ async def navigate_to_daily_check(page):
             )
 
         if not clicked:
+
             raise RuntimeError(
                 f"'{step}' 메뉴를 찾지 못했습니다."
             )
@@ -374,6 +414,7 @@ async def logout(page):
     )
 
     if not clicked:
+
         clicked = await try_click_in_frames(
             page,
             "로그아웃",
@@ -440,19 +481,31 @@ async def run_daily_check(
                 user_pw
             )
 
+            print("로그인 성공:", page.url)
+
             # 2 통합정보
-            await open_main_portal(page)
+            page = await open_main_portal(
+                context,
+                page
+            )
+
+            print("통합정보 이동:", page.url)
 
             await asyncio.sleep(2)
 
             # 3 메뉴 이동
             await navigate_to_daily_check(page)
 
+            print("일일체크 페이지:", page.url)
+
             # 4 저장
             if not await find_and_click_save(page):
+
                 raise RuntimeError(
                     "'저장' 버튼을 찾지 못했습니다."
                 )
+
+            print("저장 버튼 클릭 성공")
 
             await asyncio.sleep(2)
 
@@ -469,9 +522,12 @@ async def run_daily_check(
                 await asyncio.sleep(0.8)
 
             if not success_yes:
+
                 raise RuntimeError(
                     "최종 확인('예') 버튼을 찾지 못했습니다."
                 )
+
+            print("예 버튼 클릭 성공")
 
             await asyncio.sleep(2)
 
@@ -508,8 +564,9 @@ async def run_daily_check(
             }
 
         except Exception as e:
-            
+
             import traceback
+
             traceback.print_exc()
 
             try:
@@ -538,7 +595,9 @@ async def run_daily_check(
             }
 
         finally:
+
             await context.close()
+
             await browser.close()
 
 
@@ -557,6 +616,15 @@ app = FastAPI(
 )
 
 
+@app.get("/")
+async def root():
+
+    return {
+        "ok": True,
+        "message": "Daily Check API Running"
+    }
+
+
 @app.get("/health")
 async def health():
 
@@ -573,12 +641,14 @@ async def health():
 async def api_check(req: CheckRequest):
 
     async with run_lock:
+
         result = await run_daily_check(
             req.user_id,
             req.user_pw
         )
 
     if not result["ok"]:
+
         raise HTTPException(
             status_code=400,
             detail=result
