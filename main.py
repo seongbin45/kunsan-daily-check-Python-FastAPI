@@ -500,6 +500,9 @@ async def run_daily_check(
             }
 
         except Exception as e:
+            
+            import traceback
+            traceback.print_exc()
 
             try:
                 ts = datetime.now().strftime(
