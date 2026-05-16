@@ -402,6 +402,12 @@ async def navigate_to_daily_check(page):
             frame.url
         )
 
+    html = await page.content()
+
+    print("===== HTML START =====")
+    print(html[:5000])
+    print("===== HTML END =====")
+
     steps = [
         "학생서비스",
         "학생생활관",
@@ -501,7 +507,10 @@ async def run_daily_check(
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
                 "--disable-setuid-sandbox",
-                "--single-process"
+                "--single-process",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-web-security",
+                "--disable-features=IsolateOrigins,site-per-process"
             ]
         )
 
