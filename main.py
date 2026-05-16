@@ -7,7 +7,7 @@ import traceback
 
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
@@ -350,38 +350,60 @@ async def login(
 # =========================
 # 통합정보 이동
 # =========================
-async def open_main_portal(page):
+async def open_main_portal(context, page):
 
     print("===== 통합정보 이동 =====")
 
-    clicked = await try_click_by_text(
-        page,
-        "통합정보",
-        exact=True,
-        timeout_ms=8000
-    )
+    try:
 
-    if not clicked:
+        async with context.expect_page(
+            timeout=10000
+        ) as new_page_info:
 
-        clicked = await try_click_in_frames(
-            page,
-            "통합정보",
-            exact=True
+            clicked = await try_click_by_text(
+                page,
+                "통합정보",
+                exact=True,
+                timeout_ms=8000
+            )
+
+            if not clicked:
+
+                clicked = await try_click_in_frames(
+                    page,
+                    "통합정보",
+                    exact=True
+                )
+
+            print("통합정보 클릭 결과:", clicked)
+
+            if not clicked:
+
+                raise RuntimeError(
+                    "'통합정보' 메뉴를 찾지 못했습니다."
+                )
+
+        new_page = await new_page_info.value
+
+        await new_page.wait_for_load_state(
+            "domcontentloaded"
         )
 
-    print("통합정보 클릭 결과:", clicked)
+        await asyncio.sleep(5)
 
-    if not clicked:
+        print("새 페이지 URL:", new_page.url)
 
-        raise RuntimeError(
-            "'통합정보' 메뉴를 찾지 못했습니다."
-        )
+        return new_page
 
-    await asyncio.sleep(5)
+    except Exception as e:
 
-    print("통합정보 이동 후 URL:", page.url)
+        print("새 창 감지 실패:", e)
 
-    return page
+        await asyncio.sleep(5)
+
+        print("기존 페이지 URL:", page.url)
+
+        return page
 
 
 # =========================
@@ -390,6 +412,12 @@ async def open_main_portal(page):
 async def navigate_to_daily_check(page):
 
     print("===== 메뉴 이동 =====")
+
+    await asyncio.sleep(5)
+
+    await page.wait_for_load_state(
+        "networkidle"
+    )
 
     print("현재 URL:", page.url)
 
@@ -401,12 +429,6 @@ async def navigate_to_daily_check(page):
             f"FRAME[{idx}] URL:",
             frame.url
         )
-
-    html = await page.content()
-
-    print("===== HTML START =====")
-    print(html[:5000])
-    print("===== HTML END =====")
 
     steps = [
         "학생서비스",
@@ -422,7 +444,7 @@ async def navigate_to_daily_check(page):
             page,
             step,
             exact=True,
-            timeout_ms=5000
+            timeout_ms=7000
         )
 
         if not clicked:
@@ -436,6 +458,12 @@ async def navigate_to_daily_check(page):
         print(f"{step} 클릭 결과:", clicked)
 
         if not clicked:
+
+            html = await page.content()
+
+            print("===== PAGE HTML START =====")
+            print(html[:5000])
+            print("===== PAGE HTML END =====")
 
             raise RuntimeError(
                 f"'{step}' 메뉴를 찾지 못했습니다."
@@ -538,6 +566,7 @@ async def run_daily_check(
 
             # 통합정보
             page = await open_main_portal(
+                context,
                 page
             )
 
