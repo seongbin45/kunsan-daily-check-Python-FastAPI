@@ -17,7 +17,7 @@ from playwright.async_api import async_playwright
 # ==================================================
 app = FastAPI(
     title="Kunsan Daily Check API",
-    version="4.0.0"
+    version="5.0.0"
 )
 
 
@@ -57,6 +57,46 @@ async def health():
         "ok": True,
         "status": "healthy"
     }
+
+
+# ==================================================
+# 실제 완료 검증 함수
+# ==================================================
+async def verify_daily_check(new_tab) -> bool:
+
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+
+        await asyncio.sleep(5)
+
+        body_text = await new_tab.locator(
+            "body"
+        ).inner_text()
+
+        print("================================================")
+        print("실제 체크 완료 검증")
+        print("================================================")
+        print("오늘 날짜:", today)
+
+        if (
+            today in body_text and
+            "체크완료" in body_text
+        ):
+
+            print("실제 체크 완료 확인 성공")
+
+            return True
+
+        print("체크완료 문자열 미검출")
+
+        return False
+
+    except Exception as e:
+
+        print("검증 실패:", e)
+
+        return False
 
 
 # ==================================================
@@ -114,10 +154,8 @@ async def perform_check(
             await asyncio.sleep(3)
 
             # ==================================================
-            # 로그인 입력
+            # 로그인 정보 입력
             # ==================================================
-            print("로그인 정보 입력 시작")
-
             id_input = page.locator(
                 "input#id, input[name='id'], input[type='text']"
             ).first
@@ -138,7 +176,7 @@ async def perform_check(
             print("아이디 / 비밀번호 입력 완료")
 
             # ==================================================
-            # 로그인 버튼 클릭
+            # 로그인 버튼
             # ==================================================
             login_clicked = False
 
@@ -171,7 +209,6 @@ async def perform_check(
                 except Exception:
                     continue
 
-            # fallback
             if not login_clicked:
 
                 print("엔터 로그인 fallback")
@@ -183,10 +220,8 @@ async def perform_check(
             await asyncio.sleep(5)
 
             # ==================================================
-            # 중복 로그인 팝업 처리
+            # 중복 로그인 처리
             # ==================================================
-            print("중복 로그인 팝업 확인")
-
             try:
 
                 confirm_btn = page.get_by_role(
@@ -198,9 +233,7 @@ async def perform_check(
 
                     await confirm_btn.first.click()
 
-                    print(
-                        "중복 로그인 확인 클릭 완료"
-                    )
+                    print("중복 로그인 확인 완료")
 
             except Exception:
                 pass
@@ -208,10 +241,10 @@ async def perform_check(
             await asyncio.sleep(5)
 
             # ==================================================
-            # 통합정보 클릭 + 새탭 감지
+            # 통합정보
             # ==================================================
             print("================================================")
-            print("2. 통합정보 새탭 열기")
+            print("2. 통합정보 진입")
             print("================================================")
 
             async with context.expect_page(
@@ -228,22 +261,20 @@ async def perform_check(
                 "domcontentloaded"
             )
 
-            print("새탭 전환 완료")
+            print("통합정보 새창 진입 완료")
 
             await asyncio.sleep(5)
 
             # ==================================================
-            # 학생서비스 클릭
+            # 학생서비스
             # ==================================================
             print("================================================")
-            print("3. 학생서비스 클릭")
+            print("3. 학생서비스")
             print("================================================")
 
             await new_tab.get_by_text(
                 "학생서비스"
             ).first.click()
-
-            print("학생서비스 클릭 성공")
 
             await asyncio.sleep(5)
 
@@ -251,14 +282,12 @@ async def perform_check(
             # MY MENU
             # ==================================================
             print("================================================")
-            print("4. MY MENU 클릭")
+            print("4. MY MENU")
             print("================================================")
 
             await new_tab.get_by_text(
                 "MY MENU"
             ).first.click()
-
-            print("MY MENU 클릭 성공")
 
             await asyncio.sleep(3)
 
@@ -266,16 +295,38 @@ async def perform_check(
             # 일일체크신청
             # ==================================================
             print("================================================")
-            print("5. 일일체크신청 클릭")
+            print("5. 일일체크신청")
             print("================================================")
 
             await new_tab.get_by_text(
                 "일일체크신청"
             ).last.click()
 
-            print("일일체크신청 클릭 성공")
-
             await asyncio.sleep(8)
+
+            # ==================================================
+            # 이미 완료 여부 먼저 확인
+            # ==================================================
+            page_text = await new_tab.locator(
+                "body"
+            ).inner_text()
+
+            today = datetime.now().strftime(
+                "%Y-%m-%d"
+            )
+
+            if (
+                today in page_text and
+                "체크완료" in page_text
+            ):
+
+                print("오늘 이미 완료 상태")
+
+                return {
+                    "ok": True,
+                    "status": "skipped",
+                    "message": "오늘 이미 완료됨"
+                }
 
             # ==================================================
             # 저장 버튼
@@ -286,15 +337,13 @@ async def perform_check(
 
             save_success = False
 
-            await asyncio.sleep(5)
-
-            all_frames = [new_tab] + list(new_tab.frames)
+            all_frames = [new_tab] + list(
+                new_tab.frames
+            )
 
             for frame in all_frames:
 
                 try:
-
-                    print("FRAME URL:", frame.url)
 
                     candidates = frame.locator(
                         """
@@ -319,11 +368,6 @@ async def perform_check(
 
                             visible = await target.is_visible()
 
-                            print(
-                                f"[{i}] visible:",
-                                visible
-                            )
-
                             if not visible:
                                 continue
 
@@ -340,7 +384,6 @@ async def perform_check(
 
                             except Exception:
 
-                                # JS 강제 클릭
                                 await target.evaluate(
                                     "(el) => el.click()"
                                 )
@@ -371,41 +414,42 @@ async def perform_check(
                     )
 
             # ==================================================
-            # 최후 수단
+            # fallback
             # ==================================================
             if not save_success:
 
-                print("엔터키 fallback 저장 시도")
+                print("엔터 fallback 저장")
 
-                await new_tab.keyboard.press("Enter")
+                await new_tab.keyboard.press(
+                    "Enter"
+                )
 
                 await asyncio.sleep(3)
 
                 save_success = True
 
-            # ==================================================
-            # 실패 처리
-            # ==================================================
             if not save_success:
 
                 raise RuntimeError(
                     "저장 버튼 클릭 실패"
                 )
 
-            await asyncio.sleep(3)
+            # ==================================================
+            # 저장 후 충분한 대기
+            # ==================================================
+            print("저장 후 서버 반영 대기 중...")
+
+            await asyncio.sleep(8)
 
             # ==================================================
-            # 최종 확인 팝업
+            # 팝업 처리
             # ==================================================
             print("================================================")
-            print("7. 최종 확인 팝업 처리")
+            print("7. 팝업 처리")
             print("================================================")
-
-            final_success = False
 
             for _ in range(5):
 
-                # 메인 페이지
                 try:
 
                     btns = new_tab.locator(
@@ -451,204 +495,41 @@ async def perform_check(
                                 force=True
                             )
 
-                            final_success = True
-
                             print(
-                                f"메인 팝업 처리 성공: {merged}"
+                                f"팝업 처리 성공: {merged}"
                             )
-
-                            break
 
                 except Exception:
                     pass
 
-                # 프레임
-                for frame in new_tab.frames:
-
-                    try:
-
-                        btns = frame.locator(
-                            "button, "
-                            "input[type='button'], "
-                            "input[type='submit'], "
-                            "a.btn"
-                        )
-
-                        count = await btns.count()
-
-                        for i in range(count):
-
-                            target = btns.nth(i)
-
-                            txt = ""
-
-                            try:
-                                txt = await target.inner_text()
-                            except:
-                                pass
-
-                            val = (
-                                await target.get_attribute(
-                                    "value"
-                                ) or ""
-                            )
-
-                            merged = txt + val
-
-                            if any(
-                                x in merged
-                                for x in [
-                                    "예",
-                                    "확인",
-                                    "OK",
-                                    "yes",
-                                    "Yes"
-                                ]
-                            ):
-
-                                await target.click(
-                                    force=True
-                                )
-
-                                final_success = True
-
-                                print(
-                                    f"프레임 팝업 처리 성공: {merged}"
-                                )
-
-                                break
-
-                    except Exception:
-                        continue
-
-                if final_success:
-                    break
-
                 await asyncio.sleep(1)
 
             # ==================================================
-            # 닫기 버튼
+            # 실제 완료 검증
             # ==================================================
-            print("================================================")
-            print("8. 닫기 버튼 처리")
-            print("================================================")
+            verified = await verify_daily_check(
+                new_tab
+            )
 
+            if not verified:
+
+                raise RuntimeError(
+                    "저장은 눌렸지만 실제 체크완료가 확인되지 않았습니다."
+                )
+
+            # ==================================================
+            # 닫기
+            # ==================================================
             try:
 
                 await new_tab.get_by_text(
                     "닫기"
                 ).first.click()
 
-                print("닫기 버튼 클릭 성공")
-
             except Exception:
                 pass
 
             await asyncio.sleep(2)
-
-            # ==================================================
-            # 로그아웃
-            # ==================================================
-            print("================================================")
-            print("9. 로그아웃")
-            print("================================================")
-
-            try:
-
-                new_tab.on(
-                    "dialog",
-                    lambda dialog: dialog.accept()
-                )
-
-                target_element = None
-
-                # 메인
-                try:
-
-                    el = new_tab.get_by_text(
-                        "로그아웃"
-                    ).first
-
-                    if (
-                        await el.count() > 0
-                        and await el.is_visible()
-                    ):
-
-                        target_element = el
-
-                except Exception:
-                    pass
-
-                # 프레임
-                if not target_element:
-
-                    for frame in new_tab.frames:
-
-                        try:
-
-                            el = frame.get_by_text(
-                                "로그아웃"
-                            ).first
-
-                            if (
-                                await el.count() > 0
-                                and await el.is_visible()
-                            ):
-
-                                target_element = el
-
-                                break
-
-                        except Exception:
-                            continue
-
-                # 좌표 클릭
-                if target_element:
-
-                    box = await target_element.bounding_box()
-
-                    if box:
-
-                        center_x = (
-                            box["x"]
-                            + box["width"] / 2
-                        )
-
-                        center_y = (
-                            box["y"]
-                            + box["height"] / 2
-                        )
-
-                        await new_tab.mouse.move(
-                            center_x,
-                            center_y
-                        )
-
-                        await new_tab.mouse.click(
-                            center_x,
-                            center_y
-                        )
-
-                        print(
-                            "로그아웃 클릭 성공"
-                        )
-
-                else:
-
-                    await new_tab.mouse.click(
-                        1150,
-                        40
-                    )
-
-                    print(
-                        "우측 상단 강제 클릭"
-                    )
-
-            except Exception as e:
-
-                print("로그아웃 예외:", e)
-
-            await asyncio.sleep(5)
 
             # ==================================================
             # SUCCESS
