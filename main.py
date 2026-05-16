@@ -323,46 +323,36 @@ async def login(
 # =========================
 # 메뉴 이동
 # =========================
-async def open_main_portal(context, page):
+async def open_main_portal(page):
 
-    try:
+    print("통합정보 클릭 시도")
 
-        async with context.expect_page(timeout=10000) as new_page_info:
+    clicked = await try_click_by_text(
+        page,
+        "통합정보",
+        exact=True,
+        timeout_ms=8000
+    )
 
-            clicked = await try_click_by_text(
-                page,
-                "통합정보",
-                exact=True,
-                timeout_ms=6000
-            )
+    if not clicked:
 
-            if not clicked:
-
-                clicked = await try_click_in_frames(
-                    page,
-                    "통합정보",
-                    exact=True
-                )
-
-            if not clicked:
-
-                raise RuntimeError(
-                    "'통합정보' 메뉴를 찾지 못했습니다."
-                )
-
-        new_page = await new_page_info.value
-
-        await new_page.wait_for_load_state(
-            "networkidle"
+        clicked = await try_click_in_frames(
+            page,
+            "통합정보",
+            exact=True
         )
 
-        return new_page
+    if not clicked:
 
-    except Exception:
+        raise RuntimeError(
+            "'통합정보' 메뉴를 찾지 못했습니다."
+        )
 
-        print("새 창 감지 실패 → 기존 페이지 사용")
+    print("통합정보 클릭 성공")
 
-        return page
+    await asyncio.sleep(5)
+
+    return page
 
 
 async def navigate_to_daily_check(page):
@@ -374,7 +364,9 @@ async def navigate_to_daily_check(page):
     ]
 
     for step in steps:
-
+    
+        print("현재 URL:", page.url)
+        print(await page.content())
         print(f"메뉴 이동 시도: {step}")
 
         clicked = await try_click_by_text(
@@ -484,10 +476,7 @@ async def run_daily_check(
             print("로그인 성공:", page.url)
 
             # 2 통합정보
-            page = await open_main_portal(
-                context,
-                page
-            )
+            page = await open_main_portal(page)
 
             print("통합정보 이동:", page.url)
 
@@ -649,9 +638,11 @@ async def api_check(req: CheckRequest):
 
     if not result["ok"]:
 
-        raise HTTPException(
-            status_code=400,
-            detail=result
+        return CheckResponse(
+            ok=False,
+            status="error",
+            message=result["message"],
+            detail=result.get("detail")
         )
 
     return CheckResponse(**result)
